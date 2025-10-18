@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>ศูนย์ควบคุม CCTV นครศรีธรรมราช — Multi-view (Drag & Drop)</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/@tmcw/togeojson"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root{ --sidebar-width:320px; --sidebar-collapsed:40px; --multiview-min:40px; --multiview-max:720px; }
+  html,body{height:100%;margin:0;font-family:Arial, Helvetica, sans-serif}
+  body{display:flex;height:100vh;overflow:hidden}
+
+  /* map */
+  #map{flex:2;height:100%;position:relative;transition:flex .25s ease}
+
+  /* เวลาไทย (กึ่งกลางด้านบนแผนที่) */
+  #time-box{
+    position:absolute;
+    top:10px;
+    left:50%;
+    transform:translateX(-50%);
+    z-index:1200;
+    background:rgba(0,0,0,0.7);
+    color:#fff;
+    padding:6px 12px;
+    border-radius:6px;
+    font-size:14px;
+    white-space:nowrap;
+  }
+
+  /* slider (กึ่งกลางด้านล่างแผนที่) */
+  #slider-container{
+    position:absolute;
+    bottom:45px;
+    left:50%;
+    transform:translateX(-50%);
+    z-index:1200;
+    background:rgba(255,255,255,0.9);
+    padding:6px 10px;
+    border-radius:6px;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    box-shadow:0 2px 8px rgba(0,0,0,0.15);
+  }
+  #resizeSlider{ width:300px; }
+
+  /* sidebar */
+  #sidebar{flex:0 0 var(--sidebar-width);display:flex;flex-direction:column;background:#2c3e50;border-left:1px solid #000;transition:flex-basis .25s ease,width .25s ease}
+  #sidebar.hidden{display:none}
+  #sidebar.collapsed{flex-basis:var(--sidebar-collapsed);width:var(--sidebar-collapsed)}
+  #sidebar-header{background:#2c3e50;color:#fff;padding:10px;cursor:pointer;display:flex;align-items:center;justify-content:space-between}
+  #sidebar-content{padding:8px;overflow:auto;flex:1;background:#1e2a38;color:#fff}
+
+  /* Search box */
+  #camera-search {
+    width: 100%;
+    padding: 8px;
+    margin-bottom: 8px;
+    border: 1px solid #555;
+    background-color: #333;
+    color: #fff;
+    border-radius: 4px;
+    box-sizing: border-box;
+  }
+
+  ul#location-list{list-style:none;padding:0;margin:0}
+  .camera-item{border-bottom:1px solid #333;padding:6px 4px;display:flex;flex-direction:column; cursor:pointer}
+  .camera-item:hover{ background-color: #333; }
+  .camera-row{display:flex;align-items:center;gap:6px}
+  .camera-row .name{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .camera-row button{border:0;background:#2980b9;color:#fff;padding:4px 8px;border-radius:4px;cursor:pointer}
+  .camera-details{font-size:0.85em;color:#ccc;margin-top:4px;display:none;word-break:break-all}
+  .camera-details.expanded { display: block; }
+  .camera-details .water-level-btn {
+    display: block;
+    text-align: center;
+    margin-top: 10px;
+    padding: 8px;
+    background-color: #e67e22;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: bold;
+    text-decoration: none;
+  }
+  .camera-details .water-level-btn:hover {
+    background-color: #d35400;
+  }
+
+  /* multiview (ขวาสุด) */
+  #multiview{display:flex;flex-direction:column;background:#111;color:#fff;transition:width .25s ease,height .25s ease,opacity .2s ease; width:360px; min-width:var(--multiview-min); max-width:var(--multiview-max); overflow:hidden}
+  #multiview.hidden{display:none}
+  #multiview-controls{padding:8px;background:#0f1720;display:flex;gap:8px;align-items:center;cursor:row-resize}
+  #multiview-controls button{padding:6px 10px;border-radius:4px;border:0;background:#16a085;color:#fff;cursor:pointer}
+  #multiview-grid{padding:10px;display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));grid-auto-rows:200px;gap:10px;overflow:auto;flex:1;background:#000}
+  .grid-2x2{grid-template-columns:repeat(2,1fr)!important;grid-auto-rows:45%!important}
+  .grid-3x3{grid-template-columns:repeat(3,1fr)!important;grid-auto-rows:30%!important}
+  .mv-tile{position:relative;background:#000;border-radius:4px;overflow:hidden;cursor:pointer}
+  .mv-tile video{width:100%;height:100%;object-fit:cover;background:#000;display:block}
+  .mv-tile .mv-header{position:absolute;left:6px;top:6px;z-index:5;background:rgba(0,0,0,0.5);color:#fff;padding:2px 6px;border-radius:4px;font-size:0.85em}
+  .mv-tile .mv-close{position:absolute;right:6px;top:6px;z-index:6;background:rgba(0,0,0,0.6);border:0;color:#fff;padding:2px 6px;cursor:pointer;border-radius:3px}
+  .mv-empty{display:flex;align-items:center;justify-content:center;color:#999;padding:20px}
+  .iframe-tile{position:relative;background:#fff;border-radius:4px;overflow:hidden}
+  .iframe-tile iframe{width:100%;height:100%;border:0}
+  .iframe-fullscreen{position:fixed;top:10%;left:10%;width:80%;height:80%;z-index:1000;box-shadow:0 0 10px rgba(0,0,0,0.5)}
+  .offline-message {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: white;
+      text-align: center;
+      padding: 10px;
+      background-color: rgba(0, 0, 0, 0.7);
+      border-radius: 5px;
+  }
+  
+  /* small responsive */
+  @media (max-width:1000px){ #sidebar{display:none} }
+  @media (max-width:600px){ .iframe-fullscreen{width:90%;height:70%;top:15%;left:5%} }
+
+  /* radar control */
+  .radar-control{ position:absolute; top:10px; left:110px; z-index:1000; background:white; padding:6px; border-radius:4px; box-shadow:0 1px 5px rgba(0,0,0,0.4);}
+  .radar-control button{ padding:6px 10px; border-radius:4px; border:0; background:#e74c3c; color:#fff; cursor:pointer;}
+  .radar-control button.active{ background:#27ae60; }
+
+  /* import control */
+  .import-control{ position:absolute; top:10px; left:40px; z-index:1000; background:white; padding:6px; border-radius:4px; box-shadow:0 1px 5px rgba(0,0,0,0.4); }
+  .import-control button{ padding:6px 10px; border-radius:4px; border:0; background:#3498db; color:#fff; cursor:pointer;}
+  .import-control button:hover{ background:#2980b9; }
+  #file-input{ display:none; }
+  .layer-control{ position:absolute; bottom:60px; right:10px; z-index:1000; background:white; padding:10px; border-radius:4px; box-shadow:0 1px 5px rgba(0,0,0,0.4); max-height:300px; overflow-y:auto; }
+  .layer-control h3{ margin:0 0 10px 0; font-size:14px; }
+  .layer-item{ display:flex; align-items:center; margin-bottom:5px; }
+  .layer-item input{ margin-right:8px; }
+  .layer-item button{ margin-left:auto; background:#e74c3c; color:white; border:none; border-radius:3px; padding:3px 6px; cursor:pointer; }
+  .layer-opacity{ display:flex; align-items:center; margin-top:5px; }
+  .layer-opacity label{ font-size:12px; margin-right:8px; }
+  .layer-opacity input{ width:80px; }
+  .loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 2000;
+    color: white;
+    font-size: 18px;
+  }
+  
+  /* เพิ่ม style สำหรับ Water overlay */
+  #water-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    z-index: 2000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+  }
+  .wo-header {
+    width: 90%;
+    max-width: 900px;
+    background: #2c3e50;
+    color: #fff;
+    padding: 10px 15px;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .wo-header button {
+    background: transparent;
+    border: none;
+    color: #fff;
+    font-size: 20px;
+    cursor: pointer;
+  }
+  #water-iframe {
+    width: 90%;
+    max-width: 900px;
+    height: 80%;
+    background: #fff;
+    border: none;
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
+  }
+  .wo-notice {
+    margin-top: 10px;
+    color: #fff;
+    font-size: 14px;
+    display: none;
+    background: rgba(255, 255, 255, 0.2);
+    padding: 8px;
+    border-radius: 4px;
+  }
+  .wo-notice a {
+    color: #79d7ff;
+  }
+</style>
+</head>
+<body>
+
+  <div id="map">
+    <div id="time-box">กำลังโหลดเวลา...</div>
+
+    <div id="slider-container" title="เลื่อนไปทางขวาเพื่อซ่อน Multiview และขยายแผนที่เต็มจอ">
+      <label style="font-size:13px;color:#111;">ย่อ/ขยาย Multiview</label>
+      <input id="resizeSlider" type="range" min="0" max="100" value="40" />
+    </div>
+  </div>
+
+  <div id="sidebar" aria-expanded="true">
+    <div id="sidebar-header">
+      <span class="title">☰ กล้อง CCTV</span>
+      <span class="hint" id="sidebar-toggle-label">ย่อ/ขยาย</span>
+    </div>
+    <div id="sidebar-content">
+      <input type="text" id="camera-search" placeholder="ค้นหากล้อง..." />
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <button id="add-selected" style="flex:1;padding:6px 10px;background:#27ae60;color:#fff;border:0;border-radius:4px;cursor:pointer">เพิ่มที่เลือก</button>
+        <button id="select-all" style="padding:6px 10px;border-radius:4px;border:0;background:#2980b9;color:#fff;cursor:pointer">ทั้งหมด</button>
+      </div>
+      <ul id="location-list"></ul>
+    </div>
+  </div>
+
+  <div id="multiview">
+    <div id="multiview-controls">
+      <button id="clear-all">ล้างทั้งหมด</button>
+      <button id="layout-2x2">2x2</button>
+      <button id="layout-3x3">3x3</button>
+    </div>
+    <div id="multiview-grid">
+      <div class="mv-empty">ยังไม่มีจอแสดงผล — คลิกที่ไอคอนกล้องบนแผนที่ หรือเลือกกล้องแล้วกด "เพิ่มที่เลือก"</div>
+    </div>
+  </div>
+
+  <div id="water-overlay" role="dialog" aria-label="ดูระดับน้ำระดับน้ำรายชั่วโมง">
+    <div class="wo-header">
+      <div>ดูระดับน้ำระดับน้ำรายชั่วโมง — <span id="wo-title"></span></div>
+      <div><button class="wo-close" title="ปิด">✕</button></div>
+    </div>
+    <iframe id="water-iframe" title="ดูระดับน้ำระดับน้ำรายชั่วโมง"></iframe>
+    <div class="wo-notice">ไม่สามารถฝังหน้าเว็บนี้ได้ — <a id="open-water-newtab" href="#" target="_blank" rel="noopener noreferrer">เปิดในแท็บใหม่</a></div>
+  </div>
+
+  <input type="file" id="file-input" accept=".kml,.kmz,.gpx,.geojson,.json" multiple />
+
+  <div id="loading-overlay" class="loading-overlay" style="display: none;">
+    <div>กำลังโหลดไฟล์...</div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  /* ================== ข้อมูลกล้องนครศรีธรรมราช ================== */
+  let cctvList = [
+    { "name": "น้ำคลองท่าใหญ่ ตัวที่ 1", "streamId": "NSW01", "lat": "8.3994771", "lng": "99.8331555", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW01.m3u8" },
+    { "name": "คลองท่าใหญ่ ตัวที่ 2", "streamId": "NSW02", "lat": "8.3994771", "lng": "99.8331555", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW02.m3u8" },
+    { "name": "คลองท่าใหญ่ ตัวที่ 3", "streamId": "NSW03", "lat": "8.3994771", "lng": "99.8331555", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW03.m3u8", "isWaterLevelCamera": true, "waterLevelUrl": "https://hyd-app-db.rid.go.th/hydro8h.html" },
+    { "name": "คลองป่าเหล้า", "streamId": "NSW04", "lat": "8.40614", "lng": "99.96553", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW04.m3u8" },
+    { "name": "รามราชท้ายน้ำ", "streamId": "NSW05", "lat": "8.42972", "lng": "99.97184", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW05.m3u8" },
+    { "name": "คลองหน้าเมือง", "streamId": "NSW06", "lat": "8.42762", "lng": "99.96149", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW06.m3u8" },
+    { "name": "สะพานราเมศวร์", "streamId": "NSW07", "lat": "8.44455", "lng": "99.96112", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW07.m3u8" },
+    { "name": "คลองคูพาย (มหาราช)", "streamId": "NSW08", "lat": "8.39145", "lng": "99.97090", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW08.m3u8" },
+    { "name": "แยกหมอปาน", "streamId": "NSW09", "lat": "8.41909", "lng": "99.95475", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW09.m3u8" },
+    { "name": "ปั้มน้ำคลองลำเหมือง", "streamId": "NSW10", "lat": "8.41026", "lng": "99.97092", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW10.m3u8" },
+    { "name": "ซอยรวมแพทย์", "streamId": "NSW11", "lat": "8.43460", "lng": "99.95281", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW11.m3u8" },
+    { "name": "แยกสารีบุตรใน", "streamId": "NSW12", "lat": "8.42956", "lng": "99.96655", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW12.m3u8" },
+    { "name": "วงเวียนนอกไร่", "streamId": "NSW13", "lat": "8.44104", "lng": "99.94934", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW13.m3u8" },
+    { "name": "สี่แยกพะเนียดใน", "streamId": "NSW14", "lat": "8.43321", "lng": "99.96588", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW14.m3u8" },
+    { "name": "สี่แยกหลังวัดชะเมา", "streamId": "NSW15", "lat": "8.44947", "lng": "99.96234", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW15.m3u8" },
+    { "name": "ปากซอยต้นหว้า", "streamId": "NSW16", "lat": "8.42800", "lng": "99.95052", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW16.m3u8" },
+    { "name": "ท้ายซอยเจริญสุข", "streamId": "NSW17", "lat": "8.45621", "lng": "99.96285", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW17.m3u8" },
+    { "name": "สี่แยกมุมป้อมใน", "streamId": "NSW18", "lat": "8.4277869", "lng": "99.9673532", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW18.m3u8" },
+    { "name": "สี่แยกบ่ออ่าง-โรบินสันโอเชี่ยน", "streamId": "NSW19", "lat": "8.43803", "lng": "99.96618", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW19.m3u8" },
+    { "name": "สี่แยกประตูขาวใน", "streamId": "NSW20", "lat": "8.43085", "lng": "99.96624", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW20.m3u8" },
+    { "name": "ถนนกรแก้ว ตัวที่ 1", "streamId": "NSW21", "lat": "8.4259187", "lng": "99.9676393", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW21.m3u8" },
+    { "name": "ถนนกรแก้ว ตัวที่ 2", "streamId": "NSW22", "lat": "8.4260081", "lng": "99.9676147", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW22.m3u8" },
+    { "name": "คลองท่าเลา (ทุ่งสง)", "streamId": "KhlongThaLao", "lat": "8.1674212", "lng": "99.6741829", "streamUrl": "https://tsgcctv.fortiddns.com:8088/hls/KhlongThaLao.m3u8" },
+    { "name": "คลองท่าโหลน (ทุ่งสง)", "streamId": "KhlongThaLhon", "lat": "8.1664871", "lng": "99.7043312", "streamUrl": "https://tsgcctv.fortiddns.com:8088/hls/KhlongThaLhon.m3u8" },
+    { "name": "คลองท่าแพ (ทุ่งสง)", "streamId": "KhlongThaPhae", "lat": "8.1508797", "lng": "99.6932994", "streamUrl": "https://tsgcctv.fortiddns.com:8088/hls/KhlongThaPhae.m3u8" },
+    { "name": "คลองท่าเลา-เขาปรีดี(ทุ่งสง)", "streamId": "KhlongThalaoKaopreedee", "lat": "8.185210", "lng": "99.682489", "streamUrl": "https://tsgcctv.fortiddns.com:8088/hls/KhlongThalaoKaopreedee.m3u8" },
+    { "name": "คลองท่าโหลน-นาเหนือ(ทุ่งสง)", "streamId": "KhlongThalonNanuea", "lat": "8.170603", "lng": "99.689699", "streamUrl": "https://tsgcctv.fortiddns.com:8088/hls/KhlongThalonNanuea.m3u8" },
+    { "name": "คลองตม(ทุ่งสง)", "streamId": "KhlongTom", "lat": "8.167839", "lng": "99.680826", "streamUrl": "https://tsgcctv.fortiddns.com:8088/hls/KhlongTom.m3u8" }
+  ];
+
+  /* ================== แผนที่ ================== */
+  const map = L.map('map').setView([8.43, 99.96], 13);
+  let baseLayers = {
+    "Google Hybrid (Free)": L.tileLayer(
+      "https://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}", {
+        maxZoom: 20,
+        subdomains: ['mt0','mt1','mt2','mt3'],
+        attribution: "Map data © Google"
+      }),
+    "OpenTopoMap": L.tileLayer(
+      "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
+        maxZoom: 17,
+        attribution: "© OpenTopoMap (© OSM contributors)"
+      })
+  };
+
+  baseLayers["Google Hybrid (Free)"].addTo(map);
+  L.control.layers(baseLayers, null, { collapsed: false }).addTo(map);
+
+  // เปลี่ยน URL ของไอคอนกล้องเป็นสีแดงที่นี่
+  const cameraIcon = L.icon({ iconUrl: 'https://i.ibb.co/ccm84mPT/security-camera-3-128.png', iconSize: [32,32], iconAnchor: [16,32] });
+  const markers = {};
+  cctvList.forEach(c => {
+    // สร้างเนื้อหา Pop-up เหมือนโค้ดฉบับก่อนหน้า
+    const popupContent = `
+      <b>${c.name}</b><br>
+      พิกัด: ${c.lat}, ${c.lng}<br>
+      ${c.isWaterLevelCamera ? `<button class="popup-water-level-btn" onclick="showWaterOverlayFromLink('${c.streamId}')">ดูระดับน้ำระดับน้ำรายชั่วโมง</button>` : ''}
+    `;
+
+    const m = L.marker([parseFloat(c.lat), parseFloat(c.lng)], { icon: cameraIcon })
+      .addTo(map)
+      .bindPopup(popupContent)
+      .on('click', () => {
+        showCameraDetailsInSidebar(c);
+      });
+    markers[c.streamId] = m;
+  });
+
+  function showCameraDetailsInSidebar(cctv) {
+    // ซ่อนรายละเอียดของทุกกล้อง
+    document.querySelectorAll('.camera-item .camera-details.expanded').forEach(details => {
+        details.classList.remove('expanded');
+    });
+
+    const sidebarItem = document.querySelector(`.camera-item[data-id="${cctv.streamId}"]`);
+    if(sidebarItem) {
+      const details = sidebarItem.querySelector('.camera-details');
+      details.classList.add('expanded');
+    }
+
+    // เลื่อน sidebar ไปที่กล้องนั้น
+    const locationList = document.getElementById('location-list');
+    const listItem = document.querySelector(`.camera-item[data-id="${cctv.streamId}"]`);
+    if (listItem) {
+        locationList.scrollTop = listItem.offsetTop - locationList.offsetTop;
+    }
+    
+    // ย้ายแผนที่ไปที่ตำแหน่งกล้อง
+    map.setView([parseFloat(cctv.lat), parseFloat(cctv.lng)], 16);
+  }
+
+  /* ================== ควบคุมเรดาร์ ================== */
+  const radarControl = L.control({position: 'topleft'});
+  radarControl.onAdd = function(map) {
+    const div = L.DomUtil.create('div', 'radar-control');
+    div.innerHTML = '<button id="toggle-radar">แสดงเรดาร์</button>';
+    return div;
+  };
+  radarControl.addTo(map);
+
+  // ปรับเป็น GIF ของนครศรีธรรมราช
+  const radarLayer = L.imageOverlay(
+    'https://semet.uk/loop/NSTLoop.gif',
+    [[9.697971, 98.661811], [7.595930, 100.637799]],
+    { opacity: 0.5, attribution: 'เรดาร์นครศรีธรรมราช' }
+  );
+
+  let radarVisible = false;
+  setTimeout(()=> {
+    const tr = document.getElementById('toggle-radar');
+    if(tr){
+      tr.addEventListener('click', function() {
+        if (radarVisible) {
+          map.removeLayer(radarLayer);
+          this.textContent = 'แสดงเรดาร์';
+          this.classList.remove('active');
+        } else {
+          radarLayer.addTo(map);
+          this.textContent = 'ซ่อนเรดาร์';
+          this.classList.add('active');
+        }
+        radarVisible = !radarVisible;
+      });
+    }
+  }, 50);
+
+  /* ================== ควบคุมการนำเข้าไฟล์ ================== */
+  const importControl = L.control({position: 'topleft'});
+  importControl.onAdd = function(map) {
+    const div = L.DomUtil.create('div', 'import-control');
+    div.innerHTML = '<button id="import-file">นำเข้าไฟล์</button>';
+    return div;
+  };
+  importControl.addTo(map);
+
+  // ตัวแปรเก็บเลเยอร์ที่โหลดเข้ามา
+  const importedLayers = {};
+  let layerControlPanel = null;
+
+  // ฟังก์ชันแสดง/ซ่อน overlay การโหลด
+  function showLoading(show) {
+    const overlay = document.getElementById('loading-overlay');
+    overlay.style.display = show ? 'flex' : 'none';
+  }
+
+  // สร้างปุ่มควบคุมเลเยอร์
+  function createLayerControl() {
+    if (layerControlPanel) {
+      map.removeControl(layerControlPanel);
+    }
+
+    layerControlPanel = L.control({position: 'bottomright'});
+    layerControlPanel.onAdd = function(map) {
+      const div = L.DomUtil.create('div', 'layer-control');
+      div.innerHTML = '<h3>เลเยอร์ที่นำเข้า</h3>';
+
+      Object.keys(importedLayers).forEach(layerId => {
+        const layerInfo = importedLayers[layerId];
+        const layerItem = L.DomUtil.create('div', 'layer-item');
+
+        const checkbox = L.DomUtil.create('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = map.hasLayer(layerInfo.layer);
+        checkbox.addEventListener('change', () => {
+          if (checkbox.checked) {
+            map.addLayer(layerInfo.layer);
+          } else {
+            map.removeLayer(layerInfo.layer);
+          }
+        });
+
+        const label = L.DomUtil.create('label');
+        label.textContent = layerId;
+        label.style.marginLeft = '5px';
+
+        const opacityControl = L.DomUtil.create('div', 'layer-opacity');
+        const opacityLabel = L.DomUtil.create('label');
+        opacityLabel.textContent = 'ความโปร่งแสง:';
+        opacityLabel.setAttribute('for', `opacity-${layerId}`);
+
+        const opacitySlider = L.DomUtil.create('input');
+        opacitySlider.type = 'range';
+        opacitySlider.min = '0';
+        opacitySlider.max = '100';
+        opacitySlider.value = '100';
+        opacitySlider.id = `opacity-${layerId}`;
+
+        opacitySlider.addEventListener('input', (e) => {
+          const opacityValue = parseInt(e.target.value) / 100;
+          if (layerInfo.layer.setStyle) {
+            layerInfo.layer.setStyle({ opacity: opacityValue, fillOpacity: opacityValue });
+          } else if (layerInfo.layer.setOpacity) {
+            layerInfo.layer.setOpacity(opacityValue);
+          }
+        });
+
+        opacityControl.appendChild(opacityLabel);
+        opacityControl.appendChild(opacitySlider);
+
+        const removeBtn = L.DomUtil.create('button');
+        removeBtn.textContent = 'ลบ';
+        removeBtn.addEventListener('click', () => {
+          map.removeLayer(layerInfo.layer);
+          delete importedLayers[layerId];
+          createLayerControl();
+        });
+
+        layerItem.appendChild(checkbox);
+        layerItem.appendChild(label);
+        layerItem.appendChild(removeBtn);
+        div.appendChild(layerItem);
+        div.appendChild(opacityControl);
+      });
+
+      return div;
+    };
+
+    layerControlPanel.addTo(map);
+  }
+
+  // ฟังก์ชันจัดการไฟล์ที่นำเข้า
+  function handleFileImport(files) {
+    showLoading(true);
+
+    const fileProcessingPromises = Array.from(files).map(file => {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        const fileName = file.name;
+        const fileExt = fileName.split('.').pop().toLowerCase();
+
+        reader.onload = function(e) {
+          try {
+            let layer;
+
+            if (fileExt === 'geojson' || fileExt === 'json') {
+              const geojsonData = JSON.parse(e.target.result);
+              layer = L.geoJSON(geojsonData, {
+                style: function(feature) {
+                  return { color: '#3388ff', weight: 3, opacity: 1, fillOpacity: 0.7 };
+                },
+                onEachFeature: function(feature, layer) {
+                  if (feature.properties) {
+                    let popupContent = '<div>';
+                    let videoUrl = null;
+                    
+                    const descRegex = /href="(.*?\.m3u8)"/;
+                    if (feature.properties.description) {
+                      const match = feature.properties.description.match(descRegex);
+                      if (match && match[1]) {
+                        videoUrl = match[1];
+                      }
+                    }
+
+                    if (videoUrl) {
+                      popupContent = `
+                        <div style="width: 320px; height: 240px;">
+                          <video id="geojson-video" controls autoplay playsinline style="width: 100%; height: 100%; object-fit: contain;"></video>
+                          <div style="font-size: 12px; margin-top: 5px;">${feature.properties.title || ''}</div>
+                        </div>
+                      `;
+                      layer.on('popupopen', () => {
+                        const videoEl = document.getElementById('geojson-video');
+                        if (videoEl && Hls.isSupported()) {
+                          const hls = new Hls();
+                          hls.loadSource(videoUrl);
+                          hls.attachMedia(videoEl);
+                          videoEl._hls = hls; // Store for cleanup
+                          videoEl.play();
+                        } else if (videoEl) {
+                          videoEl.src = videoUrl;
+                          videoEl.play();
+                        }
+                      });
+                      layer.on('popupclose', () => {
+                        const videoEl = document.getElementById('geojson-video');
+                        if (videoEl && videoEl._hls) {
+                          videoEl._hls.destroy();
+                        }
+                      });
+                    } else {
+                      for (const key in feature.properties) {
+                        popupContent += `<strong>${key}:</strong> ${feature.properties[key]}<br>`;
+                      }
+                    }
+                    popupContent += '</div>';
+                    layer.bindPopup(popupContent);
+                  }
+                }
+              });
+              resolve({ fileName, layer });
+            } else if (fileExt === 'kml') {
+              const kmlData = e.target.result;
+              const parser = new DOMParser();
+              const kmlDoc = parser.parseFromString(kmlData, 'text/xml');
+              layer = L.geoJSON(toGeoJSON.kml(kmlDoc), {
+                style: function(feature) {
+                  return { color: '#3388ff', weight: 3, opacity: 1, fillOpacity: 0.7 };
+                },
+                onEachFeature: function(feature, layer) {
+                  if (feature.properties) {
+                    let popupContent = '<div>';
+                    for (const key in feature.properties) {
+                      if (key !== 'geometry') {
+                        popupContent += `<strong>${key}:</strong> ${feature.properties[key]}<br>`;
+                      }
+                    }
+                    popupContent += '</div>';
+                    layer.bindPopup(popupContent);
+                  }
+                }
+              });
+              resolve({ fileName, layer });
+            } else if (fileExt === 'kmz') {
+              const kmzData = e.target.result;
+              try {
+                const zip = new JSZip();
+                zip.loadAsync(kmzData).then(function(contents) {
+                  const kmlFiles = Object.keys(contents.files).filter(name => name.endsWith('.kml'));
+                  if (kmlFiles.length > 0) {
+                    const kmlFile = kmlFiles[0];
+                    return zip.file(kmlFile).async('string');
+                  } else {
+                    throw new Error('ไม่พบไฟล์ KML ในไฟล์ KMZ');
+                  }
+                }).then(function(kmlContent) {
+                  const parser = new DOMParser();
+                  const kmlDoc = parser.parseFromString(kmlContent, 'text/xml');
+                  const layer = L.geoJSON(toGeoJSON.kml(kmlDoc), {
+                    style: function(feature) {
+                      return { color: '#3388ff', weight: 3, opacity: 1, fillOpacity: 0.7 };
+                    },
+                    onEachFeature: function(feature, layer) {
+                      if (feature.properties) {
+                        let popupContent = '<div>';
+                        for (const key in feature.properties) {
+                          if (key !== 'geometry') {
+                            popupContent += `<strong>${key}:</strong> ${feature.properties[key]}<br>`;
+                          }
+                        }
+                        popupContent += '</div>';
+                        layer.bindPopup(popupContent);
+                      }
+                    }
+                  });
+                  resolve({ fileName, layer });
+                }).catch(function(error) {
+                  console.error('Error processing KMZ:', error);
+                  alert('เกิดข้อผิดพลาดในการประมวลผลไฟล์ KMZ: ' + fileName);
+                  resolve(null);
+                });
+              } catch (error) {
+                console.error('Error loading KMZ:', error);
+                alert('เกิดข้อผิดพลาดในการอ่านไฟล์ KMZ: ' + fileName);
+                resolve(null);
+              }
+            } else if (fileExt === 'gpx') {
+              const gpxData = e.target.result;
+              const parser = new DOMParser();
+              const gpxDoc = parser.parseFromString(gpxData, 'text/xml');
+              layer = L.geoJSON(toGeoJSON.gpx(gpxDoc), {
+                style: function(feature) {
+                  return { color: '#3388ff', weight: 3, opacity: 1, fillOpacity: 0.7 };
+                },
+                onEachFeature: function(feature, layer) {
+                  if (feature.properties) {
+                    let popupContent = '<div>';
+                    for (const key in feature.properties) {
+                      popupContent += `<strong>${key}:</strong> ${feature.properties[key]}<br>`;
+                    }
+                    popupContent += '</div>';
+                    layer.bindPopup(popupContent);
+                  }
+                }
+              });
+              resolve({ fileName, layer });
+            } else {
+              resolve(null);
+            }
+          } catch (error) {
+            console.error('Error parsing file:', error);
+            alert('เกิดข้อผิดพลาดในการอ่านไฟล์: ' + fileName);
+            resolve(null);
+          }
+        };
+
+        reader.onerror = function() {
+          alert('เกิดข้อผิดพลาดในการอ่านไฟล์: ' + fileName);
+          resolve(null);
+        };
+
+        if (fileExt === 'kmz') {
+          reader.readAsArrayBuffer(file);
+        } else {
+          reader.readAsText(file);
+        }
+      });
+    });
+
+    Promise.all(fileProcessingPromises).then(results => {
+      results.forEach(result => {
+        if (result && result.layer) {
+          importedLayers[result.fileName] = { layer: result.layer, opacity: 1.0 };
+          result.layer.addTo(map);
+        }
+      });
+
+      createLayerControl();
+      showLoading(false);
+    });
+  }
+
+  // ตั้งค่าการจัดการการคลิกปุ่มนำเข้าไฟล์
+  setTimeout(() => {
+    const importBtn = document.getElementById('import-file');
+    const fileInput = document.getElementById('file-input');
+
+    if (importBtn && fileInput) {
+      importBtn.addEventListener('click', () => {
+        fileInput.click();
+      });
+
+      fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+          handleFileImport(e.target.files);
+          fileInput.value = '';
+        }
+      });
+    }
+  }, 50);
+
+  /* ================== Sidebar (รายการกล้อง) ================== */
+  const locationList = document.getElementById('location-list');
+  const allCctvItems = cctvList.map(c => {
+      const li = document.createElement('li');
+      li.className = 'camera-item';
+      li.dataset.id = c.streamId;
+      li.innerHTML = `
+        <div class="camera-row">
+          <input type="checkbox" data-id="${c.streamId}">
+          <div class="name" title="${c.name}">${c.name}</div>
+          <button class="quick-add">+</button>
+        </div>
+        <div class="camera-details">
+          <small>พิกัด: ${c.lat}, ${c.lng}</small><br>
+          ${c.isWaterLevelCamera ? `<button class="water-level-btn" onclick="showWaterOverlayFromLink('${c.streamId}')">ดูระดับน้ำระดับน้ำรายชั่วโมง</button>` : ''}
+        </div>
+      `;
+      li.querySelector('.quick-add').addEventListener('click', (ev) => {
+        ev.stopPropagation(); addToMultiview(c);
+      });
+      li.addEventListener('click', () => {
+        showCameraDetailsInSidebar(c);
+      });
+      return li;
+  });
+
+  allCctvItems.forEach(item => locationList.appendChild(item));
+  
+  // Search filter
+  const searchInput = document.getElementById('camera-search');
+  searchInput.addEventListener('keyup', (e) => {
+    const searchTerm = e.target.value.toLowerCase();
+    locationList.innerHTML = '';
+    allCctvItems
+        .filter(item => item.dataset.id.toLowerCase().includes(searchTerm) || item.querySelector('.name').textContent.toLowerCase().includes(searchTerm))
+        .forEach(item => locationList.appendChild(item));
+  });
+
+
+  document.getElementById('select-all').addEventListener('click', () => {
+    locationList.querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = true);
+  });
+  document.getElementById('add-selected').addEventListener('click', () => {
+    const checked = locationList.querySelectorAll('input[type=checkbox]:checked');
+    checked.forEach(cb => {
+      const cam = cctvList.find(x => x.streamId === cb.dataset.id);
+      if (cam) addToMultiview(cam);
+      cb.checked = false;
+    });
+  });
+
+  /* ================== Multiview ================== */
+  const grid = document.getElementById('multiview-grid');
+  function ensurePlaceholderRemoved(){ const ph = grid.querySelector('.mv-empty'); if (ph) ph.remove(); }
+  function ensurePlaceholderIfEmpty(){ if (!grid.querySelector('.mv-tile') && !grid.querySelector('.iframe-tile')) grid.innerHTML = '<div class="mv-empty">ยังไม่มีจอแสดงผล — คลิกที่ไอคอนกล้องบนแผนที่ หรือเลือกกล้องแล้วกด "เพิ่มที่เลือก"</div>'; }
+
+  function addToMultiview(cctv){
+    if (grid.querySelector(`[data-stream="${cctv.streamId}"]`)) return;
+    ensurePlaceholderRemoved();
+    const tile = document.createElement('div');
+    tile.className = 'mv-tile'; tile.dataset.stream = cctv.streamId;
+
+    const header = document.createElement('div');
+    header.className = 'mv-header';
+    header.textContent = `${cctv.name}`;
+
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'mv-close'; closeBtn.textContent = '✕';
+    closeBtn.addEventListener('click', (e) => { e.stopPropagation(); removeTile(tile); });
+
+    const video = document.createElement('video');
+    video.setAttribute('playsinline',''); video.muted = true; video.autoplay = true; video.controls = true;
+
+    tile.appendChild(header); tile.appendChild(closeBtn); tile.appendChild(video);
+    grid.appendChild(tile);
+
+    // เพิ่ม event listener สำหรับคลิกที่วิดีโอ
+    tile.addEventListener('click', (e) => {
+      if (e.target !== closeBtn) {
+        showCameraDetailsInSidebar(cctv);
+      }
+    });
+
+    if (Hls.isSupported() && cctv.streamUrl && cctv.streamUrl.endsWith('.m3u8')) {
+      const hls = new Hls();
+      hls.loadSource(cctv.streamUrl);
+      hls.attachMedia(video);
+      hls.on(Hls.Events.ERROR, (event, data) => {
+        if (data.fatal) {
+          switch(data.type) {
+            case Hls.ErrorTypes.NETWORK_ERROR:
+              video.src = '';
+              video.poster = 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 1 1\'%3E%3C/svg%3E';
+              const offlineMsg = document.createElement('div');
+              offlineMsg.className = 'offline-message';
+              offlineMsg.textContent = 'กล้องออฟไลน์';
+              tile.appendChild(offlineMsg);
+              hls.destroy();
+              break;
+            default:
+              break;
+          }
+        }
+      });
+      video._hls = hls; // เก็บ instance เพื่อทำลายทีหลัง
+    } else if (cctv.streamUrl) {
+      video.src = cctv.streamUrl;
+    }
+  }
+
+  function removeTile(tileEl){
+    const vid = tileEl.querySelector('video');
+    if (vid) {
+      if (vid._hls) try { vid._hls.destroy(); } catch(e){/* ignore */ }
+      try { vid.pause(); } catch(e){}
+      vid.src = '';
+    }
+    tileEl.remove(); ensurePlaceholderIfEmpty();
+  }
+
+  function showWaterLevelDashboard(){
+    if (grid.querySelector('.iframe-tile')) return;
+    ensurePlaceholderRemoved();
+    const tile = document.createElement('div');
+    tile.className = 'iframe-tile iframe-fullscreen';
+    tile.dataset.stream = 'water-level';
+
+    const header = document.createElement('div');
+    header.className = 'mv-header';
+    header.textContent = 'แดชบอร์ดระดับน้ำ';
+
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'mv-close'; closeBtn.textContent = '✕';
+    closeBtn.addEventListener('click', (e) => { e.stopPropagation(); tile.remove(); ensurePlaceholderIfEmpty(); });
+
+    const iframe = document.createElement('iframe');
+    // ถ้าไม่มี dashboard สำหรับเมืองคอน ให้เว้นไว้ — ผู้ใช้สามารถแก้เป็น URL ที่ต้องการได้
+    iframe.src = 'http://183.88.214.137:9000/dashboard';
+
+    tile.appendChild(header); tile.appendChild(closeBtn); tile.appendChild(iframe);
+    grid.appendChild(tile);
+  }
+
+  document.getElementById('clear-all').addEventListener('click', () => {
+    grid.querySelectorAll('.mv-tile').forEach(removeTile);
+    grid.querySelectorAll('.iframe-tile').forEach(tile => tile.remove());
+    ensurePlaceholderIfEmpty();
+  });
+
+  /* layout + drag */
+  document.getElementById('layout-2x2').addEventListener('click', () => {
+    grid.classList.add('grid-2x2'); grid.classList.remove('grid-3x3');
+  });
+  document.getElementById('layout-3x3').addEventListener('click', () => {
+    grid.classList.add('grid-3x3'); grid.classList.remove('grid-2x2');
+  });
+  if (typeof Sortable !== 'undefined') Sortable.create(grid, { animation: 150, filter: '.mv-empty,.iframe-tile' });
+
+  /* sidebar collapse header */
+  const sidebar = document.getElementById('sidebar');
+  document.getElementById('sidebar-header').addEventListener('click', () => {
+    sidebar.classList.toggle('collapsed');
+    document.getElementById('sidebar-toggle-label').textContent = sidebar.classList.contains('collapsed') ? 'ขยาย' : 'ย่อ';
+  });
+
+  /* ================== เวลาไทย อัปเดตทุกวินาที ================== */
+  const timeBox = document.getElementById('time-box');
+  function updateThaiTime(){
+    const now = new Date();
+    const options = {
+      weekday:'long', year:'numeric', month:'long', day:'numeric',
+      hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false
+    };
+    timeBox.textContent = now.toLocaleString('th-TH', options);
+  }
+  updateThaiTime();
+  setInterval(updateThaiTime,1000);
+
+  /* ================== Slider ย่อ/ขยาย Multiview ================== */
+  const slider = document.getElementById('resizeSlider');
+  const multiviewEl = document.getElementById('multiview');
+  const mapContainer = document.getElementById('map');
+
+  const MIN_W = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--multiview-min'));
+  const MAX_W = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--multiview-max'));
+
+  slider.addEventListener('input', () => {
+    const val = parseInt(slider.value);
+    if (val === 0) {
+      multiviewEl.classList.add('hidden');
+      mapContainer.style.flex = '1';
+    } else {
+      multiviewEl.classList.remove('hidden');
+      const w = MIN_W + (val / 100) * (MAX_W - MIN_W);
+      multiviewEl.style.width = `${w}px`;
+      mapContainer.style.flex = '1';
+    }
+  });
+
+  // ตั้งค่าเริ่มต้น
+  slider.value = 40;
+  slider.dispatchEvent(new Event('input'));
+
+  /* ---------- Water overlay functions ---------- */
+  const waterOverlay = document.getElementById('water-overlay');
+  const waterIframe = document.getElementById('water-iframe');
+  const woNotice = waterOverlay.querySelector('.wo-notice');
+  const woClose = waterOverlay.querySelector('.wo-close');
+  const openNewTab = document.getElementById('open-water-newtab');
+  const woTitle = document.getElementById('wo-title');
+
+  woClose.addEventListener('click', ()=> {
+    waterOverlay.style.display = 'none';
+    waterIframe.src = '';
+    woNotice.style.display = 'none';
+    openNewTab.href = '#';
+  });
+
+  // ฟังก์ชันที่ถูกเรียกจากลิงก์บนแผนที่
+  window.showWaterOverlayFromLink = (streamId) => {
+    const cctv = cctvList.find(c => c.streamId === streamId);
+    if (cctv && cctv.waterLevelUrl) {
+      waterOverlay.style.display = 'flex';
+      woNotice.style.display = 'none';
+      woTitle.textContent = `${cctv.name}`;
+      waterIframe.src = cctv.waterLevelUrl;
+      openNewTab.href = cctv.waterLevelUrl;
+
+      let loaded = false;
+      const onload = () => {
+        loaded = true;
+        try {
+          const doc = waterIframe.contentDocument;
+          if (!doc || !doc.body || doc.body.innerHTML.trim().length === 0) {
+            woNotice.style.display = 'block';
+          } else {
+            woNotice.style.display = 'none';
+          }
+        } catch(err) {
+          woNotice.style.display = 'block';
+        }
+      };
+      waterIframe.removeEventListener('load', onload);
+      waterIframe.addEventListener('load', onload);
+      setTimeout(() => {
+          if (!loaded) {
+              woNotice.style.display = 'block';
+          }
+      }, 3000);
+    }
+  };
+});
+</script>
+</body>
+</html>
