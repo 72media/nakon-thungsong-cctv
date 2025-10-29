@@ -8,7 +8,8 @@
 <script src="https://unpkg.com/@tmcw/togeojson"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
-  :root{ --sidebar-width:320px; --sidebar-collapsed:40px; --multiview-min:40px; --multiview-max:720px; }
+  /* ++ แก้ไขความกว้างสูงสุดของ Multiview ที่นี่ ++ */
+  :root{ --sidebar-width:320px; --sidebar-collapsed:40px; --multiview-min:40px; --multiview-max:1200px; }
   html,body{height:100%;margin:0;font-family:Arial, Helvetica, sans-serif}
   body{display:flex;height:100vh;overflow:hidden}
 
@@ -90,6 +91,16 @@
   }
   .camera-details .water-level-btn:hover {
     background-color: #d35400;
+  }
+  
+  /* ++ เพิ่ม CSS สำหรับหัวข้อกลุ่ม Sidebar ++ */
+  .sidebar-group-header {
+    font-size: 1.1em;
+    font-weight: bold;
+    padding: 12px 4px 8px 4px;
+    margin-top: 10px;
+    border-bottom: 2px solid #3498db;
+    color: #3498db;
   }
 
   /* multiview (ขวาสุด) */
@@ -250,9 +261,9 @@
     </div>
   </div>
 
-  <div id="water-overlay" role="dialog" aria-label="ดูระดับน้ำระดับน้ำรายชั่วโมง">
+  <div id="water-overlay" role="dialog" aria-label="หน้าต่างแสดงข้อมูล">
     <div class="wo-header">
-      <div>ดูระดับน้ำระดับน้ำรายชั่วโมง — <span id="wo-title"></span></div>
+      <div><span id="wo-header-title"></span> — <span id="wo-title"></span></div>
       <div><button class="wo-close" title="ปิด">✕</button></div>
     </div>
     <iframe id="water-iframe" title="ดูระดับน้ำระดับน้ำรายชั่วโมง"></iframe>
@@ -271,36 +282,110 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-  /* ================== ข้อมูลกล้องนครศรีธรรมราช ================== */
+  /* ================== ข้อมูลกล้องนครศรีธรรมราช (ปรับปรุงแล้ว) ================== */
+  // ++ เพิ่ม Property "group" ให้กับทุกรายการ ++
   let cctvList = [
-    { "name": "น้ำคลองท่าใหญ่ ตัวที่ 1", "streamId": "NSW01", "lat": "8.3994771", "lng": "99.8331555", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW01.m3u8" },
-    { "name": "คลองท่าใหญ่ ตัวที่ 2", "streamId": "NSW02", "lat": "8.3994771", "lng": "99.8331555", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW02.m3u8" },
-    { "name": "คลองท่าใหญ่ ตัวที่ 3", "streamId": "NSW03", "lat": "8.3994771", "lng": "99.8331555", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW03.m3u8", "isWaterLevelCamera": true, "waterLevelUrl": "https://hyd-app-db.rid.go.th/hydro8h.html" },
-    { "name": "คลองป่าเหล้า", "streamId": "NSW04", "lat": "8.40614", "lng": "99.96553", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW04.m3u8" },
-    { "name": "รามราชท้ายน้ำ", "streamId": "NSW05", "lat": "8.42972", "lng": "99.97184", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW05.m3u8" },
-    { "name": "คลองหน้าเมือง", "streamId": "NSW06", "lat": "8.42762", "lng": "99.96149", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW06.m3u8" },
-    { "name": "สะพานราเมศวร์", "streamId": "NSW07", "lat": "8.44455", "lng": "99.96112", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW07.m3u8" },
-    { "name": "คลองคูพาย (มหาราช)", "streamId": "NSW08", "lat": "8.39145", "lng": "99.97090", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW08.m3u8" },
-    { "name": "แยกหมอปาน", "streamId": "NSW09", "lat": "8.41909", "lng": "99.95475", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW09.m3u8" },
-    { "name": "ปั้มน้ำคลองลำเหมือง", "streamId": "NSW10", "lat": "8.41026", "lng": "99.97092", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW10.m3u8" },
-    { "name": "ซอยรวมแพทย์", "streamId": "NSW11", "lat": "8.43460", "lng": "99.95281", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW11.m3u8" },
-    { "name": "แยกสารีบุตรใน", "streamId": "NSW12", "lat": "8.42956", "lng": "99.96655", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW12.m3u8" },
-    { "name": "วงเวียนนอกไร่", "streamId": "NSW13", "lat": "8.44104", "lng": "99.94934", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW13.m3u8" },
-    { "name": "สี่แยกพะเนียดใน", "streamId": "NSW14", "lat": "8.43321", "lng": "99.96588", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW14.m3u8" },
-    { "name": "สี่แยกหลังวัดชะเมา", "streamId": "NSW15", "lat": "8.44947", "lng": "99.96234", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW15.m3u8" },
-    { "name": "ปากซอยต้นหว้า", "streamId": "NSW16", "lat": "8.42800", "lng": "99.95052", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW16.m3u8" },
-    { "name": "ท้ายซอยเจริญสุข", "streamId": "NSW17", "lat": "8.45621", "lng": "99.96285", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW17.m3u8" },
-    { "name": "สี่แยกมุมป้อมใน", "streamId": "NSW18", "lat": "8.4277869", "lng": "99.9673532", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW18.m3u8" },
-    { "name": "สี่แยกบ่ออ่าง-โรบินสันโอเชี่ยน", "streamId": "NSW19", "lat": "8.43803", "lng": "99.96618", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW19.m3u8" },
-    { "name": "สี่แยกประตูขาวใน", "streamId": "NSW20", "lat": "8.43085", "lng": "99.96624", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW20.m3u8" },
-    { "name": "ถนนกรแก้ว ตัวที่ 1", "streamId": "NSW21", "lat": "8.4259187", "lng": "99.9676393", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW21.m3u8" },
-    { "name": "ถนนกรแก้ว ตัวที่ 2", "streamId": "NSW22", "lat": "8.4260081", "lng": "99.9676147", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW22.m3u8" },
-    { "name": "คลองท่าเลา (ทุ่งสง)", "streamId": "KhlongThaLao", "lat": "8.1674212", "lng": "99.6741829", "streamUrl": "https://tsgcctv.fortiddns.com:8088/hls/KhlongThaLao.m3u8" },
-    { "name": "คลองท่าโหลน (ทุ่งสง)", "streamId": "KhlongThaLhon", "lat": "8.1664871", "lng": "99.7043312", "streamUrl": "https://tsgcctv.fortiddns.com:8088/hls/KhlongThaLhon.m3u8" },
-    { "name": "คลองท่าแพ (ทุ่งสง)", "streamId": "KhlongThaPhae", "lat": "8.1508797", "lng": "99.6932994", "streamUrl": "https://tsgcctv.fortiddns.com:8088/hls/KhlongThaPhae.m3u8" },
-    { "name": "คลองท่าเลา-เขาปรีดี(ทุ่งสง)", "streamId": "KhlongThalaoKaopreedee", "lat": "8.185210", "lng": "99.682489", "streamUrl": "https://tsgcctv.fortiddns.com:8088/hls/KhlongThalaoKaopreedee.m3u8" },
-    { "name": "คลองท่าโหลน-นาเหนือ(ทุ่งสง)", "streamId": "KhlongThalonNanuea", "lat": "8.170603", "lng": "99.689699", "streamUrl": "https://tsgcctv.fortiddns.com:8088/hls/KhlongThalonNanuea.m3u8" },
-    { "name": "คลองตม(ทุ่งสง)", "streamId": "KhlongTom", "lat": "8.167839", "lng": "99.680826", "streamUrl": "https://tsgcctv.fortiddns.com:8088/hls/KhlongTom.m3u8" }
+    { "name": "น้ำคลองท่าใหญ่ ตัวที่ 1", "streamId": "NSW01", "lat": "8.3994771", "lng": "99.8331555", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW01.m3u8", "group": "เทศบาลนครฯ" },
+    { "name": "คลองท่าใหญ่ ตัวที่ 2", "streamId": "NSW02", "lat": "8.3994771", "lng": "99.8331555", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW02.m3u8", "group": "เทศบาลนครฯ" },
+    { "name": "คลองท่าใหญ่ ตัวที่ 3", "streamId": "NSW03", "lat": "8.3994771", "lng": "99.8331555", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW03.m3u8", "isWaterLevelCamera": true, "waterLevelUrl": "https://hyd-app-db.rid.go.th/hydro8h.html", "waterLevelButtonText": "ดูระดับน้ำระดับน้ำรายชั่วโมง", "group": "เทศบาลนครฯ" },
+    { "name": "คลองป่าเหล้า", "streamId": "NSW04", "lat": "8.40614", "lng": "99.96553", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW04.m3u8", "group": "เทศบาลนครฯ" },
+    { "name": "รามราชท้ายน้ำ", "streamId": "NSW05", "lat": "8.42972", "lng": "99.97184", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW05.m3u8", "group": "เทศบาลนครฯ" },
+    { "name": "คลองหน้าเมือง", "streamId": "NSW06", "lat": "8.42762", "lng": "99.96149", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW06.m3u8", "group": "เทศบาลนครฯ" },
+    { "name": "สะพานราเมศวร์", "streamId": "NSW07", "lat": "8.44455", "lng": "99.96112", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW07.m3u8", "group": "เทศบาลนครฯ" },
+    { "name": "คลองคูพาย (มหาราช)", "streamId": "NSW08", "lat": "8.39145", "lng": "99.97090", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW08.m3u8", "group": "เทศบาลนครฯ" },
+    { "name": "แยกหมอปาน", "streamId": "NSW09", "lat": "8.41909", "lng": "99.95475", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW09.m3u8", "group": "เทศบาลนครฯ" },
+    { "name": "ปั้มน้ำคลองลำเหมือง", "streamId": "NSW10", "lat": "8.41026", "lng": "99.97092", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW10.m3u8", "group": "เทศบาลนครฯ" },
+    { "name": "ซอยรวมแพทย์", "streamId": "NSW11", "lat": "8.43460", "lng": "99.95281", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW11.m3u8", "group": "เทศบาลนครฯ" },
+    { "name": "แยกสารีบุตรใน", "streamId": "NSW12", "lat": "8.42956", "lng": "99.96655", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW12.m3u8", "group": "เทศบาลนครฯ" },
+    { "name": "วงเวียนนอกไร่", "streamId": "NSW13", "lat": "8.44104", "lng": "99.94934", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW13.m3u8", "group": "เทศบาลนครฯ" },
+    { "name": "สี่แยกพะเนียดใน", "streamId": "NSW14", "lat": "8.43321", "lng": "99.96588", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW14.m3u8", "group": "เทศบาลนครฯ" },
+    { "name": "สี่แยกหลังวัดชะเมา", "streamId": "NSW15", "lat": "8.44947", "lng": "99.96234", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW15.m3u8", "group": "เทศบาลนครฯ" },
+    { "name": "ปากซอยต้นหว้า", "streamId": "NSW16", "lat": "8.42800", "lng": "99.95052", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW16.m3u8", "group": "เทศบาลนครฯ" },
+    { "name": "ท้ายซอยเจริญสุข", "streamId": "NSW17", "lat": "8.45621", "lng": "99.96285", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW17.m3u8", "group": "เทศบาลนครฯ" },
+    { "name": "สี่แยกมุมป้อมใน", "streamId": "NSW18", "lat": "8.4277869", "lng": "99.9673532", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW18.m3u8", "group": "เทศบาลนครฯ" },
+    { "name": "สี่แยกบ่ออ่าง-โรบินสันโอเชี่ยน", "streamId": "NSW19", "lat": "8.43803", "lng": "99.96618", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW19.m3u8", "group": "เทศบาลนครฯ" },
+    { "name": "สี่แยกประตูขาวใน", "streamId": "NSW20", "lat": "8.43085", "lng": "99.96624", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW20.m3u8", "group": "เทศบาลนครฯ" },
+    { "name": "ถนนกรแก้ว ตัวที่ 1", "streamId": "NSW21", "lat": "8.4259187", "lng": "99.9676393", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW21.m3u8", "group": "เทศบาลนครฯ" },
+    { "name": "ถนนกรแก้ว ตัวที่ 2", "streamId": "NSW22", "lat": "8.4260081", "lng": "99.9676147", "streamUrl": "https://streaming.noc.nakhoncity.org/live/NSW22.m3u8", "group": "เทศบาลนครฯ" },
+    
+    { "name": "คลองท่าเลา (ทุ่งสง)", "streamId": "KhlongThaLao", "lat": "8.1674212", "lng": "99.6741829", "streamUrl": "https://tsgcctv.fortiddns.com:8088/hls/KhlongThaLao.m3u8", "group": "ทุ่งสง" },
+    { "name": "คลองท่าโหลน (ทุ่งสง)", "streamId": "KhlongThaLhon", "lat": "8.1664871", "lng": "99.7043312", "streamUrl": "https://tsgcctv.fortiddns.com:8088/hls/KhlongThaLhon.m3u8", "group": "ทุ่งสง" },
+    { "name": "คลองท่าแพ (ทุ่งสง)", "streamId": "KhlongThaPhae", "lat": "8.1508797", "lng": "99.6932994", "streamUrl": "https://tsgcctv.fortiddns.com:8088/hls/KhlongThaPhae.m3u8", "group": "ทุ่งสง" },
+    { "name": "คลองท่าเลา-เขาปรีดี(ทุ่งสง)", "streamId": "KhlongThalaoKaopreedee", "lat": "8.185210", "lng": "99.682489", "streamUrl": "https://tsgcctv.fortiddns.com:8088/hls/KhlongThalaoKaopreedee.m3u8", "group": "ทุ่งสง" },
+    { "name": "คลองท่าโหลน-นาเหนือ(ทุ่งสง)", "streamId": "KhlongThalonNanuea", "lat": "8.170603", "lng": "99.689699", "streamUrl": "https://tsgcctv.fortiddns.com:8088/hls/KhlongThalonNanuea.m3u8", "group": "ทุ่งสง" },
+    { "name": "คลองตม(ทุ่งสง)", "streamId": "KhlongTom", "lat": "8.167839", "lng": "99.680826", "streamUrl": "https://tsgcctv.fortiddns.com:8088/hls/KhlongTom.m3u8", "group": "ทุ่งสง" },
+    
+    {
+      "name": "ฝายคลองท่าเลา",
+      "streamId": "FaiKhlongThaLao",
+      "lat": "8.23255", 
+      "lng": "99.70778", 
+      "streamUrl": null, 
+      "isWaterLevelCamera": true, 
+      "waterLevelUrl": "https://partners.thaiwater.net:3007/teleChart/th/SWR025/1",
+      "waterLevelButtonText": "ดูระดับน้ำระดับน้ำรายชั่วโมง",
+      "group": "จุดวัดระดับน้ำ"
+    },
+    {
+      "name": "จุดวัดระดับน้ำ อ.ทุ่งสง",
+      "streamId": "ThungSongWaterLevel",
+      "lat": "8.17497", 
+      "lng": "99.67887", 
+      "streamUrl": null, 
+      "isWaterLevelCamera": true, 
+      "waterLevelUrl": "https://partners.thaiwater.net:3007/teleChart/th/NKO001/1",
+      "waterLevelButtonText": "ดูระดับน้ำระดับน้ำรายชั่วโมง",
+      "group": "จุดวัดระดับน้ำ"
+    },
+    
+    {
+      "name": "AWS เมืองคอน",
+      "streamId": "AWS_MueangKhon",
+      "lat": "8.546111", 
+      "lng": "99.939445", 
+      "streamUrl": null, 
+      "isWaterLevelCamera": true, 
+      "waterLevelUrl": "http://122.155.135.51/aws/data-table?sid=48",
+      "itemType": "aws",
+      "waterLevelButtonText": "ดูข้อมูลสภาพอากาศ",
+      "group": "สถานี AWS"
+    },
+    {
+      "name": "AWS คลองท่าดินแดง",
+      "streamId": "AWS_KlongThaDinDaeng",
+      "lat": "8.595278", 
+      "lng": "99.601944", 
+      "streamUrl": null, 
+      "isWaterLevelCamera": true, 
+      "waterLevelUrl": "http://122.155.135.51/aws/data-table?sid=1081",
+      "itemType": "aws",
+      "waterLevelButtonText": "ดูข้อมูลสภาพอากาศ",
+      "group": "สถานี AWS"
+    },
+    {
+      "name": "AWS ฉวาง",
+      "streamId": "AWS_Chawang",
+      "lat": "8.426111", 
+      "lng": "99.503334", 
+      "streamUrl": null, 
+      "isWaterLevelCamera": true, 
+      "waterLevelUrl": "http://122.155.135.51/aws/data-table?sid=90",
+      "itemType": "aws",
+      "waterLevelButtonText": "ดูข้อมูลสภาพอากาศ",
+      "group": "สถานี AWS"
+    },
+    {
+      "name": "AWS บางจาก",
+      "streamId": "AWS_BangChak",
+      "lat": "8.177778", 
+      "lng": "100.171669", 
+      "streamUrl": null, 
+      "isWaterLevelCamera": true, 
+      "waterLevelUrl": "http://122.155.135.51/aws/data-table?sid=89",
+      "itemType": "aws",
+      "waterLevelButtonText": "ดูข้อมูลสภาพอากาศ",
+      "group": "สถานี AWS"
+    }
   ];
 
   /* ================== แผนที่ ================== */
@@ -322,28 +407,51 @@ document.addEventListener('DOMContentLoaded', () => {
   baseLayers["Google Hybrid (Free)"].addTo(map);
   L.control.layers(baseLayers, null, { collapsed: false }).addTo(map);
 
-  // เปลี่ยน URL ของไอคอนกล้องเป็นสีแดงที่นี่
   const cameraIcon = L.icon({ iconUrl: 'https://i.ibb.co/ccm84mPT/security-camera-3-128.png', iconSize: [32,32], iconAnchor: [16,32] });
+  const waterLevelIcon = L.icon({ 
+    iconUrl: 'https://maphub.net/media/markers/p/vm/pvmkxz3l6dsmvgnh/80.png', 
+    iconSize: [32,32], 
+    iconAnchor: [16,32] 
+  });
+  
+  const awsIcon = L.icon({ 
+    iconUrl: 'https://i.ibb.co/200bmnc9/logo-tmd.png', 
+    iconSize: [32, 32], 
+    iconAnchor: [16, 32] 
+  });
+  
   const markers = {};
   cctvList.forEach(c => {
-    // สร้างเนื้อหา Pop-up เหมือนโค้ดฉบับก่อนหน้า
+    let iconToUse;
+    if (c.itemType === 'aws') {
+      iconToUse = awsIcon;
+    } else if (c.isWaterLevelCamera && !c.streamUrl) {
+      iconToUse = waterLevelIcon;
+    } else {
+      iconToUse = cameraIcon;
+    }
+
+    const buttonText = c.waterLevelButtonText || 'ดูระดับน้ำระดับน้ำรายชั่วโมง';
     const popupContent = `
       <b>${c.name}</b><br>
       พิกัด: ${c.lat}, ${c.lng}<br>
-      ${c.isWaterLevelCamera ? `<button class="popup-water-level-btn" onclick="showWaterOverlayFromLink('${c.streamId}')">ดูระดับน้ำระดับน้ำรายชั่วโมง</button>` : ''}
+      ${c.isWaterLevelCamera ? `<button class="popup-water-level-btn" onclick="showWaterOverlayFromLink('${c.streamId}')">${buttonText}</button>` : ''}
     `;
 
-    const m = L.marker([parseFloat(c.lat), parseFloat(c.lng)], { icon: cameraIcon })
+    const m = L.marker([parseFloat(c.lat), parseFloat(c.lng)], { icon: iconToUse })
       .addTo(map)
       .bindPopup(popupContent)
       .on('click', () => {
-        showCameraDetailsInSidebar(c);
+        if (c.streamUrl) {
+          showCameraDetailsInSidebar(c);
+        } else if (c.isWaterLevelCamera) {
+           map.setView([parseFloat(c.lat), parseFloat(c.lng)], 16);
+        }
       });
     markers[c.streamId] = m;
   });
 
   function showCameraDetailsInSidebar(cctv) {
-    // ซ่อนรายละเอียดของทุกกล้อง
     document.querySelectorAll('.camera-item .camera-details.expanded').forEach(details => {
         details.classList.remove('expanded');
     });
@@ -354,53 +462,129 @@ document.addEventListener('DOMContentLoaded', () => {
       details.classList.add('expanded');
     }
 
-    // เลื่อน sidebar ไปที่กล้องนั้น
     const locationList = document.getElementById('location-list');
     const listItem = document.querySelector(`.camera-item[data-id="${cctv.streamId}"]`);
     if (listItem) {
         locationList.scrollTop = listItem.offsetTop - locationList.offsetTop;
     }
     
-    // ย้ายแผนที่ไปที่ตำแหน่งกล้อง
     map.setView([parseFloat(cctv.lat), parseFloat(cctv.lng)], 16);
   }
 
-  /* ================== ควบคุมเรดาร์ ================== */
-  const radarControl = L.control({position: 'topleft'});
-  radarControl.onAdd = function(map) {
-    const div = L.DomUtil.create('div', 'radar-control');
-    div.innerHTML = '<button id="toggle-radar">แสดงเรดาร์</button>';
-    return div;
+  
+
+/* ================== ควบคุมเรดาร์ + ภาพดาวเทียม IR (แบบยุบได้) ================== */
+const controlButton = L.control({ position: 'topleft' });
+controlButton.onAdd = function(map) {
+  const btn = L.DomUtil.create('button', 'layer-toggle-btn');
+  btn.innerHTML = '☰';
+  btn.title = 'แสดง/ซ่อนแผงควบคุม';
+  btn.onclick = function() {
+    const panel = document.getElementById('layer-panel');
+    panel.classList.toggle('hidden');
   };
-  radarControl.addTo(map);
+  return btn;
+};
+controlButton.addTo(map);
 
-  // ปรับเป็น GIF ของนครศรีธรรมราช
-  const radarLayer = L.imageOverlay(
-    'https://semet.uk/loop/NSTLoop.gif',
-    [[9.697971, 98.661811], [7.595930, 100.637799]],
-    { opacity: 0.5, attribution: 'เรดาร์นครศรีธรรมราช' }
-  );
+const radarControl = L.control({ position: 'topleft' });
+radarControl.onAdd = function(map) {
+  const div = L.DomUtil.create('div', 'radar-control');
+  div.id = 'layer-panel';
+  div.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:6px;">
+      <div style="display:flex;align-items:center;gap:6px;">
+        <input type="checkbox" id="chk-radar" />
+        <label for="chk-radar" style="font-size:13px;">แสดงเรดาร์</label>
+        <label style="font-size:12px;">โปร่งใส:</label>
+        <input id="radar-opacity" type="range" min="0" max="100" value="50" style="width:80px;vertical-align:middle;">
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <input type="checkbox" id="chk-satellite" />
+        <label for="chk-satellite" style="font-size:13px;">ภาพดาวเทียม IR</label>
+        <label style="font-size:12px;">โปร่งใส:</label>
+        <input id="sat-opacity" type="range" min="0" max="100" value="50" style="width:80px;vertical-align:middle;">
+      </div>
+    </div>
+  `;
+  return div;
+};
+radarControl.addTo(map);
 
-  let radarVisible = false;
-  setTimeout(()=> {
-    const tr = document.getElementById('toggle-radar');
-    if(tr){
-      tr.addEventListener('click', function() {
-        if (radarVisible) {
-          map.removeLayer(radarLayer);
-          this.textContent = 'แสดงเรดาร์';
-          this.classList.remove('active');
-        } else {
-          radarLayer.addTo(map);
-          this.textContent = 'ซ่อนเรดาร์';
-          this.classList.add('active');
-        }
-        radarVisible = !radarVisible;
-      });
-    }
-  }, 50);
+const style = document.createElement('style');
+style.textContent = `
+.layer-toggle-btn {
+  background:#fff;
+  border:1px solid #ccc;
+  border-radius:6px;
+  padding:3px 8px;
+  cursor:pointer;
+  box-shadow:0 2px 5px rgba(0,0,0,0.2);
+  transition:0.2s;
+}
+.layer-toggle-btn:hover { background:#f0f0f0; }
+#layer-panel {
+  background:rgba(255,255,255,0.9);
+  padding:8px;
+  border-radius:8px;
+  box-shadow:0 2px 6px rgba(0,0,0,0.25);
+  margin-top:6px;
+}
+#layer-panel.hidden { display:none; }
+`;
+document.head.appendChild(style);
 
-  /* ================== ควบคุมการนำเข้าไฟล์ ================== */
+const radarLayer = L.imageOverlay(
+  'https://semet.uk/loop/NSTLoop.gif',
+  [[9.697971, 98.661811], [7.595930, 100.637799]],
+  { opacity: 0.5, attribution: 'เรดาร์นครศรีธรรมราช' }
+);
+
+const satelliteLayer = L.imageOverlay(
+  'http://www.sattmet.tmd.go.th/satmet/thai/loop/enh/anigif.gif',
+  [[25.898470, 82.919924], [-0.091888, 126.034585]],
+  { opacity: 0.5, attribution: 'ภาพดาวเทียม IR' }
+);
+
+setTimeout(() => {
+  const chkRadar = document.getElementById('chk-radar');
+  const chkSat = document.getElementById('chk-satellite');
+  const radarOpacity = document.getElementById('radar-opacity');
+  const satOpacity = document.getElementById('sat-opacity');
+
+  if (chkRadar) {
+    chkRadar.addEventListener('change', function() {
+      if (this.checked) {
+        radarLayer.addTo(map);
+      } else {
+        map.removeLayer(radarLayer);
+      }
+    });
+  }
+  if (radarOpacity) {
+    radarOpacity.addEventListener('input', e => {
+      radarLayer.setOpacity(parseInt(e.target.value) / 100);
+    });
+  }
+
+  if (chkSat) {
+    chkSat.addEventListener('change', function() {
+      if (this.checked) {
+        satelliteLayer.addTo(map);
+      } else {
+        map.removeLayer(satelliteLayer);
+      }
+    });
+  }
+  if (satOpacity) {
+    satOpacity.addEventListener('input', e => {
+      satelliteLayer.setOpacity(parseInt(e.target.value) / 100);
+    });
+  }
+}, 50);
+
+
+/* ================== ควบคุมการนำเข้าไฟล์ ================== */
   const importControl = L.control({position: 'topleft'});
   importControl.onAdd = function(map) {
     const div = L.DomUtil.create('div', 'import-control');
@@ -409,17 +593,14 @@ document.addEventListener('DOMContentLoaded', () => {
   };
   importControl.addTo(map);
 
-  // ตัวแปรเก็บเลเยอร์ที่โหลดเข้ามา
   const importedLayers = {};
   let layerControlPanel = null;
 
-  // ฟังก์ชันแสดง/ซ่อน overlay การโหลด
   function showLoading(show) {
     const overlay = document.getElementById('loading-overlay');
     overlay.style.display = show ? 'flex' : 'none';
   }
 
-  // สร้างปุ่มควบคุมเลเยอร์
   function createLayerControl() {
     if (layerControlPanel) {
       map.removeControl(layerControlPanel);
@@ -494,7 +675,6 @@ document.addEventListener('DOMContentLoaded', () => {
     layerControlPanel.addTo(map);
   }
 
-  // ฟังก์ชันจัดการไฟล์ที่นำเข้า
   function handleFileImport(files) {
     showLoading(true);
 
@@ -685,7 +865,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // ตั้งค่าการจัดการการคลิกปุ่มนำเข้าไฟล์
   setTimeout(() => {
     const importBtn = document.getElementById('import-file');
     const fileInput = document.getElementById('file-input');
@@ -705,42 +884,102 @@ document.addEventListener('DOMContentLoaded', () => {
   }, 50);
 
   /* ================== Sidebar (รายการกล้อง) ================== */
+  // ++ เริ่มการแก้ไข Sidebar ทั้งหมดที่นี่ ++
   const locationList = document.getElementById('location-list');
-  const allCctvItems = cctvList.map(c => {
-      const li = document.createElement('li');
-      li.className = 'camera-item';
-      li.dataset.id = c.streamId;
-      li.innerHTML = `
-        <div class="camera-row">
-          <input type="checkbox" data-id="${c.streamId}">
-          <div class="name" title="${c.name}">${c.name}</div>
-          <button class="quick-add">+</button>
-        </div>
-        <div class="camera-details">
-          <small>พิกัด: ${c.lat}, ${c.lng}</small><br>
-          ${c.isWaterLevelCamera ? `<button class="water-level-btn" onclick="showWaterOverlayFromLink('${c.streamId}')">ดูระดับน้ำระดับน้ำรายชั่วโมง</button>` : ''}
-        </div>
-      `;
-      li.querySelector('.quick-add').addEventListener('click', (ev) => {
-        ev.stopPropagation(); addToMultiview(c);
+
+  // 1. จัดกลุ่มข้อมูลก่อน
+  // (เราจะกรองเฉพาะที่มี streamUrl ออกที่นี่เลย)
+  const groupedItems = cctvList
+    .filter(c => c.streamUrl !== null) // กรองเฉพาะกล้องที่มีวิดีโอ
+    .reduce((acc, c) => {
+      const group = c.group || 'ไม่มีกลุ่ม'; // ถ้าไม่ได้ตั้ง group
+      if (!acc[group]) {
+        acc[group] = [];
+      }
+      acc[group].push(c);
+      return acc;
+    }, {});
+    
+  // 3. วนลูปเพื่อสร้าง li และเพิ่มหัวข้อกลุ่ม
+  let allCctvItems = []; // เก็บ li ทั้งหมดเพื่อใช้ในการค้นหา
+  locationList.innerHTML = ''; // ล้างของเก่า
+
+  // วนลูปตามกลุ่มที่จัดไว้ (เรียงตามที่กำหนดถ้าต้องการ หรือปล่อยตามลำดับที่พบ)
+  const groupOrder = ["เทศบาลนครฯ", "ทุ่งสง"]; // สามารถกำหนดลำดับกลุ่มที่นี่ได้
+  
+  groupOrder.forEach(groupName => {
+    if (groupedItems[groupName]) {
+      // สร้างหัวข้อกลุ่ม
+      const header = document.createElement('h3');
+      header.className = 'sidebar-group-header';
+      header.textContent = groupName;
+      locationList.appendChild(header);
+
+      // วนลูปกล้องในกลุ่มนั้น
+      groupedItems[groupName].forEach(c => {
+        const li = document.createElement('li');
+        li.className = 'camera-item';
+        li.dataset.id = c.streamId;
+        const buttonText = c.waterLevelButtonText || 'ดูระดับน้ำระดับน้ำรายชั่วโมง';
+        li.innerHTML = `
+          <div class="camera-row">
+            <input type="checkbox" data-id="${c.streamId}">
+            <div class="name" title="${c.name}">${c.name}</div>
+            <button class="quick-add">+</button>
+          </div>
+          <div class="camera-details">
+            <small>พิกัด: ${c.lat}, ${c.lng}</small><br>
+            ${c.isWaterLevelCamera ? `<button class="water-level-btn" onclick="showWaterOverlayFromLink('${c.streamId}')">${buttonText}</button>` : ''}
+          </div>
+        `;
+        const quickAddBtn = li.querySelector('.quick-add');
+        if (quickAddBtn) {
+          quickAddBtn.addEventListener('click', (ev) => {
+            ev.stopPropagation(); addToMultiview(c);
+          });
+        }
+        li.addEventListener('click', () => {
+          showCameraDetailsInSidebar(c);
+        });
+        
+        locationList.appendChild(li); // เพิ่ม li ลงใน list
+        allCctvItems.push(li); // เก็บ li ไว้ในอาร์เรย์รวม
       });
-      li.addEventListener('click', () => {
-        showCameraDetailsInSidebar(c);
-      });
-      return li;
+    }
   });
 
-  allCctvItems.forEach(item => locationList.appendChild(item));
-  
-  // Search filter
+  // 4. อัปเดตฟังก์ชันค้นหา (Search filter)
   const searchInput = document.getElementById('camera-search');
   searchInput.addEventListener('keyup', (e) => {
     const searchTerm = e.target.value.toLowerCase();
-    locationList.innerHTML = '';
-    allCctvItems
-        .filter(item => item.dataset.id.toLowerCase().includes(searchTerm) || item.querySelector('.name').textContent.toLowerCase().includes(searchTerm))
-        .forEach(item => locationList.appendChild(item));
+    
+    let visibleGroups = new Set();
+
+    // วนลูปซ่อน/แสดง camera-item
+    allCctvItems.forEach(item => {
+      const name = item.querySelector('.name').textContent.toLowerCase();
+      const isMatch = item.dataset.id.toLowerCase().includes(searchTerm) || name.includes(searchTerm);
+      item.style.display = isMatch ? '' : 'none';
+      
+      if (isMatch) {
+        // ค้นหา header ที่อยู่ก่อนหน้า
+        let prev = item.previousElementSibling;
+        while(prev) {
+          if (prev.classList.contains('sidebar-group-header')) {
+            visibleGroups.add(prev);
+            break;
+          }
+          prev = prev.previousElementSibling;
+        }
+      }
+    });
+
+    // วนลูปซ่อน/แสดง header
+    locationList.querySelectorAll('.sidebar-group-header').forEach(header => {
+      header.style.display = visibleGroups.has(header) ? '' : 'none';
+    });
   });
+  // ++ สิ้นสุดการแก้ไข Sidebar ++
 
 
   document.getElementById('select-all').addEventListener('click', () => {
@@ -750,7 +989,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const checked = locationList.querySelectorAll('input[type=checkbox]:checked');
     checked.forEach(cb => {
       const cam = cctvList.find(x => x.streamId === cb.dataset.id);
-      if (cam) addToMultiview(cam);
+      if (cam && cam.streamUrl) addToMultiview(cam);
       cb.checked = false;
     });
   });
@@ -761,6 +1000,12 @@ document.addEventListener('DOMContentLoaded', () => {
   function ensurePlaceholderIfEmpty(){ if (!grid.querySelector('.mv-tile') && !grid.querySelector('.iframe-tile')) grid.innerHTML = '<div class="mv-empty">ยังไม่มีจอแสดงผล — คลิกที่ไอคอนกล้องบนแผนที่ หรือเลือกกล้องแล้วกด "เพิ่มที่เลือก"</div>'; }
 
   function addToMultiview(cctv){
+    if (!cctv.streamUrl) {
+      console.warn(`ไม่สามารถเพิ่มกล้อง ${cctv.name} เข้า Multiview ได้เนื่องจากไม่มี Stream URL`);
+      alert(`สถานที่ ${cctv.name} ไม่มีสตรีมวิดีโอ (เป็นจุดวัดระดับน้ำ)`);
+      return;
+    }
+    
     if (grid.querySelector(`[data-stream="${cctv.streamId}"]`)) return;
     ensurePlaceholderRemoved();
     const tile = document.createElement('div');
@@ -780,7 +1025,6 @@ document.addEventListener('DOMContentLoaded', () => {
     tile.appendChild(header); tile.appendChild(closeBtn); tile.appendChild(video);
     grid.appendChild(tile);
 
-    // เพิ่ม event listener สำหรับคลิกที่วิดีโอ
     tile.addEventListener('click', (e) => {
       if (e.target !== closeBtn) {
         showCameraDetailsInSidebar(cctv);
@@ -808,7 +1052,7 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         }
       });
-      video._hls = hls; // เก็บ instance เพื่อทำลายทีหลัง
+      video._hls = hls;
     } else if (cctv.streamUrl) {
       video.src = cctv.streamUrl;
     }
@@ -840,7 +1084,6 @@ document.addEventListener('DOMContentLoaded', () => {
     closeBtn.addEventListener('click', (e) => { e.stopPropagation(); tile.remove(); ensurePlaceholderIfEmpty(); });
 
     const iframe = document.createElement('iframe');
-    // ถ้าไม่มี dashboard สำหรับเมืองคอน ให้เว้นไว้ — ผู้ใช้สามารถแก้เป็น URL ที่ต้องการได้
     iframe.src = 'http://183.88.214.137:9000/dashboard';
 
     tile.appendChild(header); tile.appendChild(closeBtn); tile.appendChild(iframe);
@@ -853,7 +1096,6 @@ document.addEventListener('DOMContentLoaded', () => {
     ensurePlaceholderIfEmpty();
   });
 
-  /* layout + drag */
   document.getElementById('layout-2x2').addEventListener('click', () => {
     grid.classList.add('grid-2x2'); grid.classList.remove('grid-3x3');
   });
@@ -862,7 +1104,6 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   if (typeof Sortable !== 'undefined') Sortable.create(grid, { animation: 150, filter: '.mv-empty,.iframe-tile' });
 
-  /* sidebar collapse header */
   const sidebar = document.getElementById('sidebar');
   document.getElementById('sidebar-header').addEventListener('click', () => {
     sidebar.classList.toggle('collapsed');
@@ -903,7 +1144,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // ตั้งค่าเริ่มต้น
   slider.value = 40;
   slider.dispatchEvent(new Event('input'));
 
@@ -914,6 +1154,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const woClose = waterOverlay.querySelector('.wo-close');
   const openNewTab = document.getElementById('open-water-newtab');
   const woTitle = document.getElementById('wo-title');
+  const woHeaderTitle = document.getElementById('wo-header-title');
 
   woClose.addEventListener('click', ()=> {
     waterOverlay.style.display = 'none';
@@ -922,13 +1163,22 @@ document.addEventListener('DOMContentLoaded', () => {
     openNewTab.href = '#';
   });
 
-  // ฟังก์ชันที่ถูกเรียกจากลิงก์บนแผนที่
   window.showWaterOverlayFromLink = (streamId) => {
     const cctv = cctvList.find(c => c.streamId === streamId);
     if (cctv && cctv.waterLevelUrl) {
+
+      if (cctv.waterLevelUrl.startsWith('http://')) {
+        window.open(cctv.waterLevelUrl, '_blank', 'noopener,noreferrer');
+        return; 
+      }
+
       waterOverlay.style.display = 'flex';
       woNotice.style.display = 'none';
+      
+      const titleText = cctv.waterLevelButtonText || 'ดูระดับน้ำระดับน้ำรายชั่วโมง'; 
+      if (woHeaderTitle) woHeaderTitle.textContent = titleText;
       woTitle.textContent = `${cctv.name}`;
+      
       waterIframe.src = cctv.waterLevelUrl;
       openNewTab.href = cctv.waterLevelUrl;
 
@@ -946,8 +1196,10 @@ document.addEventListener('DOMContentLoaded', () => {
           woNotice.style.display = 'block';
         }
       };
+      
       waterIframe.removeEventListener('load', onload);
       waterIframe.addEventListener('load', onload);
+      
       setTimeout(() => {
           if (!loaded) {
               woNotice.style.display = 'block';
